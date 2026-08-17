@@ -3,7 +3,6 @@ import { useCountrySearch } from '../services/useCountrySearch/useCountrySearch'
 import { useDefaultCountries } from '../services/useDefaultCountries/useDefaultCountries';
 import { useRegionCountries } from '../services/useRegionCountries/useRegionCountries';
 import { useFavorites } from '../services/useFavorites/useFavorites';
-import { getVisitorIp } from '../services/ipLookup/ipLookup';
 import { addLookupLogEntry } from '../services/lookupLog/lookupLog';
 import { REGIONS, type Country } from '../services/countriesApi';
 import CountryDetailsModal from './CountryDetailsModal';
@@ -48,9 +47,9 @@ export default function CountrySearch({ apiKey, name, onLogout }: CountrySearchP
 
   const handleSelect = (country: Country) => {
     setSelectedCountry(country);
-    void getVisitorIp()
-      .then((ip) => addLookupLogEntry({ countryName: country.names.common, ip }))
-      .catch((err) => console.warn('Failed to record country lookup', err));
+    void addLookupLogEntry({ countryName: country.names.common }).catch((err) =>
+      console.warn('Failed to record country lookup', err),
+    );
   };
 
   const handleSearchChange = (value: string) => {

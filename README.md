@@ -2,14 +2,35 @@
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
+## Backend (`server/`)
+
+The frontend used to record IP lookups straight into `localStorage`, which meant the admin page could only ever see lookups made from the same browser/device it was opened on. `server/` is a small Express API that centralizes this: every device POSTs lookups to it, and the admin page reads the same shared log back from it, regardless of which device is used.
+
+- `POST /api/lookups` — records a lookup. The server determines the caller's IP from the request itself (`X-Forwarded-For`/socket address) rather than trusting a client-reported IP, then resolves it to a country/city via the [REST Countries IP API](https://restcountries.com/apis/ip) (`api.restcountries.com/ip/v1/{address}`).
+- `GET /api/lookups` — returns all recorded lookups, newest first.
+- `DELETE /api/lookups` — clears the log.
+
+Data is persisted to `server/data/lookups.json` (gitignored), pruned the same way the old localStorage log was (max 500 entries, 30-day retention).
+
+To run it locally:
+
+```
+cd server
+cp .env.example .env   # fill in COUNTRIES_API_KEY
+npm install
+npm run dev
+```
+
+The frontend talks to it via `VITE_API_BASE_URL` (see `.env.example` at the repo root).
+
 ## Security notes (frontend-only constraints)
 
-This is a client-only SPA with no backend, which puts two things out of reach of a pure code fix:
+Two things remain out of reach of a pure code fix, since the frontend is still a client bundle even with a backend behind it:
 
-- **The countries API key (`VITE_COUNTRIES_API_KEY`) is visible in the shipped bundle.** Any `VITE_`-prefixed env var gets inlined into the client JS at build time, so it's readable by anyone who opens devtools. There's no way to keep an API key secret without a server to hold it — the only real fix is a backend proxy that calls the countries API on the client's behalf.
-- **The "admin" role check is a client-side convenience, not real authentication.** `login()` in [`src/services/authSession/authSession.ts`](src/services/authSession/authSession.ts) compares against `VITE_ADMIN_USERNAME`/`VITE_ADMIN_PASSWORD`, which are also inlined into the bundle, and the resulting role is trusted straight out of `sessionStorage`. Anyone with devtools can set that value directly (`sessionStorage.setItem('world-search:auth-session', '{"role":"admin","name":"x"}')`) and reach the admin page without ever knowing the password. Fixing this for real requires a server that verifies credentials and issues a session/token the client can't forge.
+- **The countries API key (`VITE_COUNTRIES_API_KEY`) is visible in the shipped bundle.** Any `VITE_`-prefixed env var gets inlined into the client JS at build time, so it's readable by anyone who opens devtools. The IP lookup's API key was moved server-side (`COUNTRIES_API_KEY` in `server/.env`, never `VITE_`-prefixed) as part of adding the backend above, but the countries-search API key is still called directly from the client. The real fix is the same shape: proxy those calls through `server/` too.
+- **The "admin" role check is a client-side convenience, not real authentication.** `login()` in [`src/services/authSession/authSession.ts`](src/services/authSession/authSession.ts) compares against `VITE_ADMIN_USERNAME`/`VITE_ADMIN_PASSWORD`, which are also inlined into the bundle, and the resulting role is trusted straight out of `sessionStorage`. Anyone with devtools can set that value directly (`sessionStorage.setItem('world-search:auth-session', '{"role":"admin","name":"x"}')`) and reach the admin page without ever knowing the password. Because of this, `GET /api/lookups` and `DELETE /api/lookups` are currently **not** authenticated server-side either — fixing this for real requires the server to verify credentials and issue a session/token the client can't forge, then gate those routes on it.
 
-Everything else flagged in review has been mitigated in code: `.env` is gitignored (see `.env.example` for the required shape), a CSP is set in `index.html`, flag image URLs are validated to `https:` before being used as an `<img src>`, and the lookup log in `localStorage` now prunes entries older than 30 days and can be cleared from the admin page.
+Everything else flagged in review has been mitigated in code: `.env` is gitignored (see `.env.example` for the required shape), a CSP is set in `index.html`, and flag image URLs are validated to `https:` before being used as an `<img src>`.
 
 Currently, two official plugins are available:
 

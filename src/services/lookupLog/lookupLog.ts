@@ -1,61 +1,37 @@
-const STORAGE_KEY = 'world-search:lookup-log';
-const MAX_ENTRIES = 500;
-const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const API_BASE = import.meta.env.VITE_API_BASE_URL;
 
 export interface LookupLogEntry {
   id: string;
   countryName: string;
   ip: string;
+  geo: { country: string | null; city: string | null; continent: string | null } | null;
   timestamp: string;
 }
 
-function readAll(): LookupLogEntry[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-
-    const cutoff = Date.now() - MAX_AGE_MS;
-    const fresh = parsed.filter((entry: LookupLogEntry) => new Date(entry.timestamp).getTime() >= cutoff);
-    if (fresh.length !== parsed.length) writeAll(fresh);
-
-    return fresh;
-  } catch (err) {
-    console.warn('lookupLog: failed to read localStorage', err);
-    return [];
-  }
+/** Returns all recorded lookups (across every device), newest first. */
+export async function getLookupLog(): Promise<LookupLogEntry[]> {
+  const res = await fetch(`${API_BASE}/api/lookups`);
+  if (!res.ok) throw new Error(`Failed to load lookup log (${res.status})`);
+  return res.json();
 }
 
-function writeAll(entries: LookupLogEntry[]): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
-  } catch (err) {
-    console.warn('lookupLog: failed to write localStorage', err);
-  }
-}
-
-/** Returns all recorded lookups, newest first. */
-export function getLookupLog(): LookupLogEntry[] {
-  return [...readAll()].reverse();
-}
-
-/** Records a country lookup and returns the created entry. */
-export function addLookupLogEntry(entry: { countryName: string; ip: string }): LookupLogEntry {
-  const full: LookupLogEntry = {
-    id: crypto.randomUUID(),
-    timestamp: new Date().toISOString(),
-    ...entry,
-  };
-
-  const entries = readAll();
-  entries.push(full);
-  writeAll(entries.slice(-MAX_ENTRIES));
-
-  return full;
+/**
+ * Records a country lookup. The server determines the caller's IP from the
+ * request itself (and resolves it via the REST Countries IP API) rather than
+ * trusting an IP reported by the client.
+ */
+export async function addLookupLogEntry(entry: { countryName: string }): Promise<LookupLogEntry> {
+  const res = await fetch(`${API_BASE}/api/lookups`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(entry),
+  });
+  if (!res.ok) throw new Error(`Failed to record lookup (${res.status})`);
+  return res.json();
 }
 
 /** Deletes all recorded lookups. */
-export function clearLookupLog(): void {
-  writeAll([]);
+export async function clearLookupLog(): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/lookups`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`Failed to clear lookup log (${res.status})`);
 }

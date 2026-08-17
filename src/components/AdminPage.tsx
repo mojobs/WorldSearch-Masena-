@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { clearLookupLog, getLookupLog, type LookupLogEntry } from '../services/lookupLog/lookupLog';
 
 interface AdminPageProps {
@@ -7,12 +7,33 @@ interface AdminPageProps {
 }
 
 export default function AdminPage({ name, onLogout }: AdminPageProps) {
-  const [entries, setEntries] = useState<LookupLogEntry[]>(() => getLookupLog());
+  const [entries, setEntries] = useState<LookupLogEntry[]>([]);
+  const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
+
+  const fetchLog = () => {
+    getLookupLog()
+      .then((log) => {
+        setEntries(log);
+        setStatus('success');
+      })
+      .catch((err) => {
+        console.warn('Failed to load lookup log', err);
+        setStatus('error');
+      });
+  };
+
+  const refresh = () => {
+    setStatus('loading');
+    fetchLog();
+  };
+
+  useEffect(fetchLog, []);
 
   const handleClear = () => {
     if (!window.confirm('Clear the entire lookup log? This cannot be undone.')) return;
-    clearLookupLog();
-    setEntries([]);
+    void clearLookupLog()
+      .then(() => setEntries([]))
+      .catch((err) => console.warn('Failed to clear lookup log', err));
   };
 
   return (
@@ -25,7 +46,7 @@ export default function AdminPage({ name, onLogout }: AdminPageProps) {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setEntries(getLookupLog())}
+            onClick={refresh}
             className="cursor-pointer rounded-lg border border-gray-700 bg-black px-3 py-1.5 text-sm text-white hover:bg-gray-800"
           >
             Refresh
@@ -48,35 +69,47 @@ export default function AdminPage({ name, onLogout }: AdminPageProps) {
         </div>
       </div>
 
-      {entries.length === 0 ? (
-        <p className="text-sm text-gray-400">No lookups recorded yet.</p>
+      {status === 'error' && (
+        <p className="text-sm text-red-400">Couldn't reach the lookup server. Try refreshing.</p>
+      )}
+
+      {status !== 'error' && entries.length === 0 ? (
+        <p className="text-sm text-gray-400">{status === 'loading' ? 'Loading…' : 'No lookups recorded yet.'}</p>
       ) : (
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr>
-              <th className="border-b border-gray-800 px-2.5 py-2 text-left text-xs tracking-wide text-gray-400 uppercase">
-                Country
-              </th>
-              <th className="border-b border-gray-800 px-2.5 py-2 text-left text-xs tracking-wide text-gray-400 uppercase">
-                IP address
-              </th>
-              <th className="border-b border-gray-800 px-2.5 py-2 text-left text-xs tracking-wide text-gray-400 uppercase">
-                Timestamp
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {entries.map((entry) => (
-              <tr key={entry.id} className="hover:bg-gray-900">
-                <td className="border-b border-gray-800 px-2.5 py-2">{entry.countryName}</td>
-                <td className="border-b border-gray-800 px-2.5 py-2">{entry.ip}</td>
-                <td className="border-b border-gray-800 px-2.5 py-2">
-                  {new Date(entry.timestamp).toLocaleString()}
-                </td>
+        status !== 'error' && (
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr>
+                <th className="border-b border-gray-800 px-2.5 py-2 text-left text-xs tracking-wide text-gray-400 uppercase">
+                  Country
+                </th>
+                <th className="border-b border-gray-800 px-2.5 py-2 text-left text-xs tracking-wide text-gray-400 uppercase">
+                  IP address
+                </th>
+                <th className="border-b border-gray-800 px-2.5 py-2 text-left text-xs tracking-wide text-gray-400 uppercase">
+                  Location
+                </th>
+                <th className="border-b border-gray-800 px-2.5 py-2 text-left text-xs tracking-wide text-gray-400 uppercase">
+                  Timestamp
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {entries.map((entry) => (
+                <tr key={entry.id} className="hover:bg-gray-900">
+                  <td className="border-b border-gray-800 px-2.5 py-2">{entry.countryName}</td>
+                  <td className="border-b border-gray-800 px-2.5 py-2">{entry.ip}</td>
+                  <td className="border-b border-gray-800 px-2.5 py-2">
+                    {[entry.geo?.city, entry.geo?.country].filter(Boolean).join(', ') || '—'}
+                  </td>
+                  <td className="border-b border-gray-800 px-2.5 py-2">
+                    {new Date(entry.timestamp).toLocaleString()}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )
       )}
     </div>
   );
